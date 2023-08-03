@@ -1,4 +1,7 @@
-use tokio::net::TcpListener;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpListener,
+};
 
 #[tokio::main]
 async fn main() {
@@ -6,8 +9,28 @@ async fn main() {
         .await
         .unwrap_or_else(|err| panic!("Problem binding to socket: {err:?}"));
 
-    let (stream, _socketaddr) = listener
+    let (mut stream, _socketaddr) = listener
         .accept()
         .await
-        .unwrap_or_else(|err| panic!("Problem reading stream: {err:?}"));
+        .unwrap_or_else(|err| panic!("Problem establising connection: {err:?}"));
+
+    let (read, mut writer) = stream.split();
+    let mut line = String::new();
+    let mut reader = BufReader::new(read);
+
+    loop {
+        let bytes_read = reader
+            .read_line(&mut line)
+            .await
+            .unwrap_or_else(|err| panic!("Problem reading stream: {err:?}"));
+
+        if bytes_read == 0 {
+            break;
+        }
+        writer
+            .write_all(&line.as_bytes())
+            .await
+            .unwrap_or_else(|err| panic!("Problem writing to stream: {err:?}"));
+        line.clear()
+    }
 }
