@@ -10,14 +10,14 @@ async fn main() {
         .await
         .unwrap_or_else(|err| panic!("Problem binding to socket: {err:?}"));
 
-    let (sender, _reciver) = broadcast::channel::<String>(2);
+    let (sender, _reciver) = broadcast::channel(2);
 
     loop {
         let sender = sender.clone();
 
         let mut reciver = sender.subscribe();
 
-        let (mut stream, _socketaddr) = listener
+        let (mut stream, socketaddr) = listener
             .accept()
             .await
             .unwrap_or_else(|err| panic!("Problem establising connection: {err:?}"));
@@ -30,30 +30,32 @@ async fn main() {
             let mut reader = BufReader::new(read);
 
             loop {
-                let bytes_read = reader
-                    .read_line(&mut line)
-                    .await
-                    .unwrap_or_else(|err| panic!("Problem reading stream: {err:?}"));
+                tokio::select! {
 
-                if bytes_read == 0 {
-                    break;
-                }
+                bytes_read=reader.read_line(&mut line) => {
 
-                sender
-                    .send(line.clone())
-                    .unwrap_or_else(|err| panic!("Problem sending message: {err:?}"));
+                    if bytes_read.unwrap() == 0 {
+                        break;
+                    }
+                    sender.send((line.clone(),socketaddr)).unwrap_or_else(|err| panic!("Problem sending message: {err:?}"));
 
-                let message = reciver
-                    .recv()
-                    .await
-                    .unwrap_or_else(|err| panic!("Problem recieving message: {err:?}"));
+                    line.clear()
+                    }
 
-                writer
-                    .write_all(&message.as_bytes())
+                 response= reciver.recv()=>{
+
+                    let (message, partner_addr) = response.unwrap();
+                    let user =socketaddr.port().to_string() + " says: " + &message;
+                    if socketaddr != partner_addr {
+                    writer
+                    .write_all(&user.as_bytes())
                     .await
                     .unwrap_or_else(|err| panic!("Problem writing to stream: {err:?}"));
 
-                line.clear()
+                    }
+                }
+
+                }
             }
         });
     }
